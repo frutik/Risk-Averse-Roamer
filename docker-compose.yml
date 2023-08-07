@@ -1,0 +1,74 @@
+version: '3.9'
+
+services:
+  roamer-rabbitmq:
+    container_name: roamer-rabbitmq
+    image: rabbitmq:3.8.3-management
+    ports:
+      - 8080:15672 # management port
+      - 5672:5672 # amqp port
+      - 25672:25672 # cluster port
+    environment:
+      RABBITMQ_NODENAME: roamer
+      RABBITMQ_DEFAULT_USER: ${ALL_USERNAME}
+      RABBITMQ_DEFAULT_PASS: ${ALL_USERNAME}
+  roamer-psql:
+    container_name: roamer-pgsql
+    image: 'postgres:11-alpine'
+    environment:
+      POSTGRES_USER: '${ALL_USERNAME}'
+      POSTGRES_PASSWORD: '${ALL_USERNAME}'
+    ports:
+      - '5432:5432'
+    env_file:
+      - .env
+    volumes:
+      - './data/psql:/var/lib/postgresql/data'
+#      - './psql/postgresql.conf:/var/lib/postgresql/data/postgresql.conf'
+#      - './psql/pg_hba.conf:/var/lib/postgresql/pg_hba.conf'
+  pepelaco-worker:
+    container_name: roamer-worker
+    build:
+      context: ./app
+      dockerfile: ../Dockerfile
+      target: app
+    entrypoint: celery -A app worker -l info
+    depends_on:
+      - roamer-psql
+      - roamer-rabbitmq
+    env_file:
+      - .env
+    environment:
+      DEBUG: 1
+    volumes:
+      - "./data:/mnt"
+    network_mode: service:roamer-web
+  roamer-app:
+    container_name: roamer-app
+    build:
+      context: ./app
+      dockerfile: ../Dockerfile
+      target: app
+    depends_on:
+      - roamer-psql
+      - roamer-rabbitmq
+    env_file:
+      - .env
+    environment:
+      DEBUG: 1
+    volumes:
+      - "./data:/mnt"
+    network_mode: service:roamer-web
+  roamer-web:
+    container_name: roamer-web
+    build:
+      context: ./app
+      dockerfile: ../Dockerfile
+      target: web
+    environment:
+      DEBUG: 1
+    ports:
+      - '8088:80'
+volumes:
+  esdata:
+    driver: local
